@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTreeWidget, QTreeWidgetItem, QLabel, QPushButton,
     QToolBar, QStatusBar, QFileDialog, QMessageBox,
-    QGroupBox, QFormLayout, QTextEdit
+    QGroupBox, QFormLayout, QTextEdit, QDialog, QInputDialog
 )
 from PyQt5.QtCore import Qt
 from nbt.nbt import (
@@ -19,6 +19,8 @@ from nbt.nbt import (
 from nbt.nbt_handler import load_nbt_file, save_nbt_file, validate_nbt_file
 from utils.file_system import get_minecraft_folder
 from utils.type_icon import get_icon_for_tag
+from utils.add_tag_dialog import AddTagDialog
+from utils.add_tag_dialog import AddTagDialog
 
 class NBTTreeWidget(QTreeWidget):
     """Custom tree widget for displaying NBT structure"""
@@ -100,6 +102,7 @@ class PropertyEditor(QWidget):
         self.current_parent_key = None
         self.on_value_changed = None
         self.on_delete_requested = None
+        self.on_tag_added = None
         
         layout = QVBoxLayout()
         
@@ -139,19 +142,25 @@ class PropertyEditor(QWidget):
         self.editor_group.setLayout(editor_layout)
         layout.addWidget(self.editor_group)
         
-        # Delete button group
-        self.delete_group = QGroupBox("Actions")
-        self.delete_group.hide()
-        delete_layout = QVBoxLayout()
+        # Actions button group
+        self.actions_group = QGroupBox("Actions")
+        self.actions_group.hide()
+        actions_layout = QVBoxLayout()
+        
+        self.add_button = QPushButton("Add Tag")
+        self.add_button.setEnabled(False)
+        self.add_button.clicked.connect(self.add_tag)
+        self.add_button.setStyleSheet("QPushButton { background-color: #4a9eff; color: white; }")
+        actions_layout.addWidget(self.add_button)
         
         self.delete_button = QPushButton("Delete This Tag")
         self.delete_button.setEnabled(False)
         self.delete_button.clicked.connect(self.delete_tag)
         self.delete_button.setStyleSheet("QPushButton { background-color: #96212d; color: white; }")
+        actions_layout.addWidget(self.delete_button)
         
-        delete_layout.addWidget(self.delete_button)
-        self.delete_group.setLayout(delete_layout)
-        layout.addWidget(self.delete_group)
+        self.actions_group.setLayout(actions_layout)
+        layout.addWidget(self.actions_group)
         
         layout.addStretch()
         self.setLayout(layout)
@@ -169,13 +178,14 @@ class PropertyEditor(QWidget):
             self.tag_value_label.setText("-")
             self.value_editor.setEnabled(False)
             self.apply_button.setEnabled(False)
+            self.add_button.setEnabled(False)
             self.delete_button.setEnabled(False)
             self.editor_group.hide()
-            self.delete_group.hide()
+            self.actions_group.hide()
             return
         
         self.editor_group.show()
-        self.delete_group.show()
+        self.actions_group.show()
         
         tag_type = type(tag).__name__
         tag_value = str(tag)
@@ -216,6 +226,10 @@ class PropertyEditor(QWidget):
             self.value_editor.setEnabled(False)
             self.apply_button.setEnabled(False)
             self.value_editor.setPlainText("")
+        
+        # Enable add button for Compound, List, and Array tags
+        can_add = isinstance(tag, (CompoundTag, ListTag, ByteArrayTag, IntArrayTag, LongArrayTag))
+        self.add_button.setEnabled(can_add)
         
         # Enable delete button if tag has a parent (can be deleted from compound)
         self.delete_button.setEnabled(parent_tag is not None and isinstance(parent_tag, CompoundTag))
@@ -306,6 +320,79 @@ class PropertyEditor(QWidget):
                 QMessageBox.information(self, "Success", f"Tag '{self.current_name}' deleted successfully.")
             except Exception as e:
                 QMessageBox.warning(self, "Error", f"Failed to delete tag: {str(e)}")
+    
+    def add_tag(self):
+        """Add a new tag to the current tag (compound, list, or array)"""
+        if self.current_tag is None:
+            return
+        
+        try:
+            # Determine what type of tag we're adding to
+            if isinstance(self.current_tag, CompoundTag):
+                # Add key-value pair to compound
+                dialog = AddTagDialog(self, require_name=True)
+                if dialog.exec_() == QDialog.Accepted:
+                    name, new_tag = dialog.get_result()
+                    if name in self.current_tag:
+                        QMessageBox.warning(self, "Duplicate Key", f"A tag with name '{name}' already exists.")
+                        return
+                    self.current_tag[name] = new_tag
+                    if self.on_value_changed:
+                        self.on_value_changed()
+                    QMessageBox.information(self, "Success", f"Tag '{name}' added successfully.")
+            
+            elif isinstance(self.current_tag, ListTag):
+                # Add item to list
+                # Determine the list's type if it has items
+                list_type = None
+                if len(self.current_tag) > 0:
+                    list_type = type(self.current_tag[0])
+                
+                dialog = AddTagDialog(self, require_name=False, list_type=list_type)
+                if dialog.exec_() == QDialog.Accepted:
+                    _, new_tag = dialog.get_result()
+                    # Validate type matches list type
+                    if list_type is not None and type(new_tag) != list_type:
+                        QMessageBox.warning(
+                            self, 
+                            "Type Mismatch", 
+                            f"List expects {list_type.__name__}, but got {type(new_tag).__name__}."
+                        )
+                        return
+                    self.current_tag.append(new_tag)
+                    if self.on_value_changed:
+                        self.on_value_changed()
+                    QMessageBox.information(self, "Success", "Item added to list successfully.")
+            
+            elif isinstance(self.current_tag, ByteArrayTag):
+                # Add element to byte array
+                value, ok = QInputDialog.getInt(self, "Add Byte", "Enter byte value (0-255):", 0, 0, 255, 1)
+                if ok:
+                    self.current_tag.value.append(value & 0xFF)
+                    if self.on_value_changed:
+                        self.on_value_changed()
+                    QMessageBox.information(self, "Success", "Byte added to array successfully.")
+            
+            elif isinstance(self.current_tag, IntArrayTag):
+                # Add element to int array
+                value, ok = QInputDialog.getInt(self, "Add Integer", "Enter integer value:", 0, -2147483648, 2147483647, 1)
+                if ok:
+                    self.current_tag.value.append(value)
+                    if self.on_value_changed:
+                        self.on_value_changed()
+                    QMessageBox.information(self, "Success", "Integer added to array successfully.")
+            
+            elif isinstance(self.current_tag, LongArrayTag):
+                # Add element to long array
+                value, ok = QInputDialog.getInt(self, "Add Long", "Enter long value:", 0, -9223372036854775808, 9223372036854775807, 1)
+                if ok:
+                    self.current_tag.value.append(value)
+                    if self.on_value_changed:
+                        self.on_value_changed()
+                    QMessageBox.information(self, "Success", "Long added to array successfully.")
+        
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to add tag: {str(e)}")
 
 
 class NBTEditorMainWindow(QMainWindow):
@@ -333,6 +420,7 @@ class NBTEditorMainWindow(QMainWindow):
         
         self.property_editor = PropertyEditor()
         self.property_editor.on_value_changed = self.on_value_changed
+        self.property_editor.on_tag_added = self.on_value_changed  # Use same callback for refresh
         main_layout.addWidget(self.property_editor, 1)
         
         central_widget.setLayout(main_layout)
@@ -373,6 +461,7 @@ class NBTEditorMainWindow(QMainWindow):
         """Create the toolbar"""
         toolbar = QToolBar()
         self.addToolBar(toolbar)
+        toolbar.setMovable(False)
         
         open_btn = QPushButton("Open")
         open_btn.clicked.connect(self.open_file)
