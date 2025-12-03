@@ -3,11 +3,10 @@ Add Tag Dialog
 Dialog for creating new NBT tags.
 """
 from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QComboBox, QTextEdit, QMessageBox, QFormLayout, QGroupBox
+    QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
+    QComboBox, QMessageBox, QGroupBox
 )
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QIntValidator, QDoubleValidator, QRegExpValidator
+from PyQt5.QtGui import QIntValidator, QRegExpValidator
 from PyQt5.QtCore import QRegExp
 from nbt.nbt import (
     ByteTag, ShortTag, IntTag, LongTag, FloatTag, DoubleTag, StringTag,

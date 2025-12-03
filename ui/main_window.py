@@ -4,8 +4,8 @@ Main application window for the NBT Editor.
 """
 import os
 from PyQt5.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QToolBar, QStatusBar, QFileDialog, QMessageBox, QMenuBar
+    QMainWindow, QWidget, QHBoxLayout, QPushButton,
+    QToolBar, QStatusBar, QFileDialog, QMessageBox
 )
 from PyQt5.QtCore import Qt
 from nbt.nbt import NBTFile, CompoundTag
