@@ -4,7 +4,7 @@ Handles loading, saving, and validation of NBT files for Minecraft.
 """
 import os
 from typing import Tuple, List
-from nbt import NBTFile, CompoundTag
+from .nbt import NBTFile, CompoundTag
 
 
 class NBTValidationError(Exception):

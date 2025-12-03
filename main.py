@@ -11,13 +11,14 @@ from PyQt5.QtWidgets import (
     QGroupBox, QFormLayout, QTextEdit
 )
 from PyQt5.QtCore import Qt
-from nbt import (
-    NBTFile, CompoundTag,
-    IntTag, FloatTag, StringTag, ByteTag, ShortTag, LongTag, DoubleTag,
+from nbt.nbt import (
+    NBTFile, CompoundTag, DoubleTag, LongTag,
+    IntTag, FloatTag, StringTag, ByteTag, ShortTag,
     ByteArrayTag, IntArrayTag, LongArrayTag, ListTag
 )
-from nbt_handler import load_nbt_file, save_nbt_file, validate_nbt_file
+from nbt.nbt_handler import load_nbt_file, save_nbt_file, validate_nbt_file
 from utils.file_system import get_minecraft_folder
+from utils.type_icon import get_icon_for_tag
 
 class NBTTreeWidget(QTreeWidget):
     """Custom tree widget for displaying NBT structure"""
@@ -28,6 +29,10 @@ class NBTTreeWidget(QTreeWidget):
         self.itemSelectionChanged.connect(self.on_selection_changed)
         self.current_nbt_file = None
         self.on_tag_selected = None
+        
+        # Get the icon sheet path relative to the script location
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.icon_sheet_path = os.path.join(script_dir, "assets", "nbt_icon_sheet.png")
     
     def load_nbt(self, nbt_file: NBTFile):
         """Load NBT file into tree view"""
@@ -65,6 +70,11 @@ class NBTTreeWidget(QTreeWidget):
             display_text = f"{name} ({tag_type}): {str(tag)}"
         
         item.setText(0, display_text)
+        
+        # Set icon based on tag type
+        icon = get_icon_for_tag(tag, self.icon_sheet_path)
+        item.setIcon(0, icon)
+        
         return item
     
     def on_selection_changed(self):
@@ -137,7 +147,7 @@ class PropertyEditor(QWidget):
         self.delete_button = QPushButton("Delete This Tag")
         self.delete_button.setEnabled(False)
         self.delete_button.clicked.connect(self.delete_tag)
-        self.delete_button.setStyleSheet("QPushButton { background-color: #ff6b6b; color: white; }")
+        self.delete_button.setStyleSheet("QPushButton { background-color: #96212d; color: white; }")
         
         delete_layout.addWidget(self.delete_button)
         self.delete_group.setLayout(delete_layout)
@@ -284,7 +294,7 @@ class PropertyEditor(QWidget):
             self,
             "Confirm Delete",
             f"Are you sure you want to delete '{self.current_name}'?",
-            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No | QMessageBox.Yes,
             QMessageBox.No
         )
         
@@ -388,7 +398,7 @@ class NBTEditorMainWindow(QMainWindow):
                 self.current_nbt_file = nbt_file
                 self.current_file_path = filepath
                 self.tree_widget.load_nbt(nbt_file)
-                self.status_bar.showMessage(f"Opened: {os.path.basename(filepath)}")
+                self.status_bar.showMessage(f"Opened: {filepath}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to open file:\n{str(e)}")
     
