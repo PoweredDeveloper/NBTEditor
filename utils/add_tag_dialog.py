@@ -7,6 +7,8 @@ from PyQt5.QtWidgets import (
     QComboBox, QTextEdit, QMessageBox, QFormLayout, QGroupBox
 )
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIntValidator, QDoubleValidator, QRegExpValidator
+from PyQt5.QtCore import QRegExp
 from nbt.nbt import (
     ByteTag, ShortTag, IntTag, LongTag, FloatTag, DoubleTag, StringTag,
     ByteArrayTag, IntArrayTag, LongArrayTag, ListTag, CompoundTag
@@ -102,8 +104,7 @@ class AddTagDialog(QDialog):
         value_group = QGroupBox("Tag Value")
         value_layout = QVBoxLayout()
         
-        self.value_input = QTextEdit()
-        self.value_input.setMaximumHeight(100)
+        self.value_input = QLineEdit()
         self.value_input.setPlaceholderText("Enter value (comma-separated for arrays)...")
         value_layout.addWidget(self.value_input)
         value_group.setLayout(value_layout)
@@ -132,11 +133,37 @@ class AddTagDialog(QDialog):
         """Handle tag type selection change"""
         current_type = self.type_combo.currentData()
         
+        # Clear previous validator
+        self.value_input.setValidator(None)
+        
         if current_type in (ListTag, CompoundTag):
             # Complex types don't need values
             self.value_input.setPlaceholderText("(No value needed - will create empty structure)")
             self.value_input.setEnabled(False)
+        elif current_type in (ByteTag, ShortTag, IntTag, LongTag):
+            # Integer types - only numbers
+            validator = QIntValidator()
+            self.value_input.setValidator(validator)
+            self.value_input.setPlaceholderText("Enter integer value...")
+            self.value_input.setEnabled(True)
+        elif current_type in (FloatTag, DoubleTag):
+            # Float types - numbers with optional decimal point
+            # Use regex to allow typing dots and intermediate states like ".", "1.", ".5"
+            # Allows: empty, sign only, digits, dot, digits with dot, etc.
+            regex = QRegExp(r'^[+-]?(\d*\.?\d*|\.\d*)$')
+            validator = QRegExpValidator(regex)
+            self.value_input.setValidator(validator)
+            self.value_input.setPlaceholderText("Enter float value...")
+            self.value_input.setEnabled(True)
+        elif current_type == StringTag:
+            # String - any text
+            self.value_input.setPlaceholderText("Enter string value...")
+            self.value_input.setEnabled(True)
         elif current_type in (ByteArrayTag, IntArrayTag, LongArrayTag):
+            # Arrays - comma-separated integers
+            regex = QRegExp(r'^[\d\s,+-]+$')
+            validator = QRegExpValidator(regex)
+            self.value_input.setValidator(validator)
             self.value_input.setPlaceholderText("Enter comma-separated values (e.g., 1, 2, 3)")
             self.value_input.setEnabled(True)
         else:
@@ -155,7 +182,7 @@ class AddTagDialog(QDialog):
         
         # Get selected tag type
         tag_class = self.type_combo.currentData()
-        value_text = self.value_input.toPlainText().strip()
+        value_text = self.value_input.text().strip()
         
         try:
             # Create tag based on type
