@@ -52,8 +52,8 @@ def can_edit_tag(tag: Tag) -> bool:
 
 
 def can_delete_from_parent(parent_tag: Tag) -> bool:
-    """Check if a tag can be deleted from its parent (parent must be Compound)"""
-    return isinstance(parent_tag, CompoundTag)
+    """Check if a tag can be deleted from its parent (parent must be Compound or List)"""
+    return isinstance(parent_tag, (CompoundTag, ListTag))
 
 
 def get_tag_type_name(tag: Tag) -> str:
