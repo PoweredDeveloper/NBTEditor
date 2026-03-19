@@ -14,6 +14,31 @@ from nbt.nbt import (
 )
 
 
+INT32_MIN = -(2**31)
+INT32_MAX = 2**31 - 1
+INT64_MIN = -(2**63)
+INT64_MAX = 2**63 - 1
+
+
+def _to_signed(value: int, bits: int) -> int:
+    """Convert an integer to two's-complement signed value with the given bit width."""
+    mask = (1 << bits) - 1
+    value &= mask
+    sign_bit = 1 << (bits - 1)
+    if value & sign_bit:
+        return value - (1 << bits)
+    return value
+
+
+def _parse_int_in_range(value_string: str, min_value: int, max_value: int) -> int:
+    if not value_string:
+        return 0
+    val = int(value_string)
+    if val < min_value or val > max_value:
+        raise ValueError(f"Value must be in range [{min_value}, {max_value}]")
+    return val
+
+
 class AddTagDialog(QDialog):
     """Dialog for creating a new NBT tag"""
     
@@ -147,9 +172,8 @@ class AddTagDialog(QDialog):
             self.value_input.setEnabled(True)
         elif current_type in (FloatTag, DoubleTag):
             # Float types - numbers with optional decimal point
-            # Use regex to allow typing dots and intermediate states like ".", "1.", ".5"
-            # Allows: empty, sign only, digits, dot, digits with dot, etc.
-            regex = QRegExp(r'^[+-]?(\d*\.?\d*|\.\d*)$')
+            # Disallow sign-only/dot-only inputs; allow "1.", ".5", and normal decimals.
+            regex = QRegExp(r'^[+-]?((\d+(\.\d*)?)|(\.\d+))$')
             validator = QRegExpValidator(regex)
             self.value_input.setValidator(validator)
             self.value_input.setPlaceholderText("Enter float value...")
@@ -186,46 +210,32 @@ class AddTagDialog(QDialog):
         try:
             # Create tag based on type
             if tag_class == ByteTag:
-                if not value_text:
-                    value = 0
-                else:
-                    value = int(value_text) & 0xFF
-                self.created_tag = ByteTag(value)
+                raw = int(value_text) if value_text else 0
+                self.created_tag = ByteTag(_to_signed(raw, 8))
             
             elif tag_class == ShortTag:
-                if not value_text:
-                    value = 0
-                else:
-                    value = int(value_text) & 0xFFFF
-                self.created_tag = ShortTag(value)
+                raw = int(value_text) if value_text else 0
+                self.created_tag = ShortTag(_to_signed(raw, 16))
             
             elif tag_class == IntTag:
-                if not value_text:
-                    value = 0
-                else:
-                    value = int(value_text)
+                value = _parse_int_in_range(value_text, INT32_MIN, INT32_MAX)
                 self.created_tag = IntTag(value)
             
             elif tag_class == LongTag:
-                if not value_text:
-                    value = 0
-                else:
-                    value = int(value_text)
+                value = _parse_int_in_range(value_text, INT64_MIN, INT64_MAX)
                 self.created_tag = LongTag(value)
             
             elif tag_class == FloatTag:
                 if not value_text:
-                    value = 0.0
-                else:
-                    value = float(value_text)
-                self.created_tag = FloatTag(value)
+                    QMessageBox.warning(self, "Invalid Input", "Value is required.")
+                    return
+                self.created_tag = FloatTag(float(value_text))
             
             elif tag_class == DoubleTag:
                 if not value_text:
-                    value = 0.0
-                else:
-                    value = float(value_text)
-                self.created_tag = DoubleTag(value)
+                    QMessageBox.warning(self, "Invalid Input", "Value is required.")
+                    return
+                self.created_tag = DoubleTag(float(value_text))
             
             elif tag_class == StringTag:
                 self.created_tag = StringTag(value_text)

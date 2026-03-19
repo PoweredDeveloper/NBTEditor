@@ -27,51 +27,82 @@ class NBTTreeWidget(QTreeWidget):
         script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.icon_sheet_path = os.path.join(script_dir, "assets", "nbt_icon_sheet_scaled.png")
     
-    def _get_expanded_state(self) -> Set[Tuple[int, Any]]:
+    def _get_tag_name_from_item(self, item: QTreeWidgetItem) -> str:
+        # item text looks like: "<name> (<TagType...>)" so the name is before " ("
+        return item.text(0).split(" (")[0]
+
+    def _get_item_path(self, item: QTreeWidgetItem) -> Tuple[str, ...]:
+        """
+        Build a stable path for a tree item based on displayed tag keys.
+        This avoids identity comparison because the NBT tag objects are recreated on refresh.
+        """
+        parts = []
+        current = item
+        while current is not None:
+            parts.append(self._get_tag_name_from_item(current))
+            current = current.parent()
+        return tuple(reversed(parts))
+
+    def _select_item_by_path(self, path: Tuple[str, ...]) -> None:
+        """Select an item by its stable path (best-effort)."""
+        if not path:
+            return
+
+        root = self.topLevelItem(0)
+        if not root:
+            return
+        if self._get_tag_name_from_item(root) != path[0]:
+            return
+
+        current_item = root
+        for name in path[1:]:
+            found = None
+            for i in range(current_item.childCount()):
+                child = current_item.child(i)
+                if self._get_tag_name_from_item(child) == name:
+                    found = child
+                    break
+            if found is None:
+                return
+            current_item = found
+
+        self.setCurrentItem(current_item)
+        self.on_selection_changed()
+
+    def _get_expanded_state(self) -> Set[Tuple[str, ...]]:
         """
         Get the set of expanded tag paths.
         """
         expanded = set()
-        
-        def collect_expanded(item, path=()):
+
+        def collect_expanded(item: QTreeWidgetItem, path_prefix: Tuple[str, ...]) -> None:
+            name = self._get_tag_name_from_item(item)
+            path = path_prefix + (name,)
             if item.isExpanded():
-                tag = item.data(0, Qt.UserRole)
-                parent_tag = item.data(1, Qt.UserRole)
-                parent_key = item.data(2, Qt.UserRole)
-                if tag is not None:
-                    expanded.add((id(parent_tag), parent_key))
-            
+                expanded.add(path)
             for i in range(item.childCount()):
-                child = item.child(i)
-                child_parent_tag = child.data(1, Qt.UserRole)
-                child_parent_key = child.data(2, Qt.UserRole)
-                child_path = (id(child_parent_tag), child_parent_key)
-                collect_expanded(child, child_path)
-        
+                collect_expanded(item.child(i), path)
+
         root = self.topLevelItem(0)
         if root:
-            collect_expanded(root)
-        
+            collect_expanded(root, ())
+
         return expanded
     
-    def _restore_expanded_state(self, expanded_state: Set[Tuple[int, Any]]) -> None:
+    def _restore_expanded_state(self, expanded_state: Set[Tuple[str, ...]]) -> None:
         """
         Restore expanded state based on tag paths.
         """
-        def restore_item(item):
-            parent_tag = item.data(1, Qt.UserRole)
-            parent_key = item.data(2, Qt.UserRole)
-            if parent_tag is not None:
-                state_key = (id(parent_tag), parent_key)
-                if state_key in expanded_state:
-                    item.setExpanded(True)
-            
+        def restore_item(item: QTreeWidgetItem, path_prefix: Tuple[str, ...]) -> None:
+            name = self._get_tag_name_from_item(item)
+            path = path_prefix + (name,)
+            item.setExpanded(path in expanded_state)
             for i in range(item.childCount()):
-                restore_item(item.child(i))
-        
+                restore_item(item.child(i), path)
+
         root = self.topLevelItem(0)
         if root:
-            restore_item(root)
+            restore_item(root, ())
     
     def load_nbt(self, nbt_file: NBTFile, preserve_state: bool = False):
         """
@@ -101,15 +132,14 @@ class NBTTreeWidget(QTreeWidget):
             return
         
         selected_items = self.selectedItems()
-        selected_tag = None
+        selected_path = None
         if selected_items:
-            item = selected_items[0]
-            selected_tag = item.data(0, Qt.UserRole)
-        
+            selected_path = self._get_item_path(selected_items[0])
+
         self.load_nbt(self.current_nbt_file, preserve_state=True)
-        
-        if selected_tag is not None:
-            self._select_tag_in_tree(selected_tag)
+
+        if selected_path is not None:
+            self._select_item_by_path(selected_path)
     
     def _create_tree_item(
         self,
@@ -174,12 +204,13 @@ class NBTTreeWidget(QTreeWidget):
             return
         
         tag, parent_tag, parent_key, tag_name = self._extract_item_data(item)
+        item_path = self._get_item_path(item)
         
         menu = QMenu(self)
         
         if tag is not None and can_add_to_tag(tag):
             create_action = menu.addAction("Create Tag")
-            create_action.triggered.connect(lambda: self._handle_create_tag(tag))
+            create_action.triggered.connect(lambda: self._handle_create_tag(tag, item_path))
         
         if parent_tag is not None and can_delete_from_parent(parent_tag):
             delete_action = menu.addAction("Delete Tag")
@@ -187,22 +218,20 @@ class NBTTreeWidget(QTreeWidget):
         
         if parent_tag is not None and isinstance(parent_tag, CompoundTag) and parent_key is not None:
             rename_action = menu.addAction("Rename Tag")
-            rename_action.triggered.connect(lambda: self._handle_rename_tag(tag_name, parent_tag, parent_key))
+            rename_action.triggered.connect(lambda: self._handle_rename_tag(item_path, tag_name, parent_tag, parent_key))
         
         if not menu.isEmpty():
             menu.exec_(event.globalPos())
     
-    def _handle_create_tag(self, parent_tag: Tag) -> None:
+    def _handle_create_tag(self, parent_tag: Tag, parent_path: Tuple[str, ...]) -> None:
         """Handle create tag from context menu"""
-        def refresh_callback():
-            if self.on_value_changed:
-                self.on_value_changed()
-            self._select_tag_in_tree(parent_tag)
-        
-        self.action_controller.create_tag(
-            parent_tag,
-            on_success=refresh_callback
-        )
+        # Ensure the clicked node is the selection before we refresh.
+        self._select_item_by_path(parent_path)
+
+        success, _name, _new_tag = self.action_controller.create_tag(parent_tag, on_success=None)
+        if success and self.on_value_changed:
+            self.on_value_changed()
+            self._select_item_by_path(parent_path)
     
     def _handle_delete_tag(
         self,
@@ -211,58 +240,37 @@ class NBTTreeWidget(QTreeWidget):
         parent_key: Any
     ) -> None:
         """Handle delete tag from context menu"""
-        def refresh_callback():
-            if self.on_value_changed:
-                self.on_value_changed()
-            self.clearSelection()
-        
-        self.action_controller.delete_tag(
+        success = self.action_controller.delete_tag(
             tag_name,
             parent_tag,
             parent_key,
-            on_success=refresh_callback,
-            on_unselect=lambda: self.clearSelection()
+            on_success=None,
+            on_unselect=None,
         )
+        if success and self.on_value_changed:
+            self.on_value_changed()
+        self.clearSelection()
     
     def _handle_rename_tag(
         self,
+        old_item_path: Tuple[str, ...],
         tag_name: str,
         parent_tag: CompoundTag,
         parent_key: Any
     ) -> None:
         """Handle rename tag from context menu"""
-        tag_value = parent_tag[parent_key] if parent_key in parent_tag else None
-        
-        def refresh_callback():
-            if self.on_value_changed:
-                self.on_value_changed()
-            if tag_value is not None:
-                self._select_tag_in_tree(tag_value)
-        
-        self.action_controller.rename_tag(
+        success, new_name = self.action_controller.rename_tag(
             tag_name,
             parent_tag,
             parent_key,
-            on_success=refresh_callback
+            on_success=None
         )
+        if success and new_name and self.on_value_changed:
+            # Refresh tree first, then select using updated path (the key changed).
+            self.on_value_changed()
+            new_path = old_item_path[:-1] + (new_name,)
+            self._select_item_by_path(new_path)
     
-    def _select_tag_in_tree(self, target_tag: Tag) -> None:
-        """Helper to find and select a tag in the tree"""
-        def find_item(parent_item):
-            for i in range(parent_item.childCount()):
-                child = parent_item.child(i)
-                child_tag = child.data(0, Qt.UserRole)
-                if child_tag is target_tag:
-                    return child
-                found = find_item(child)
-                if found:
-                    return found
-            return None
-        
-        root = self.topLevelItem(0)
-        if root:
-            found = find_item(root)
-            if found:
-                self.setCurrentItem(found)
-                self.on_selection_changed()
+    # NOTE: identity-based selection was intentionally removed.
+    # Selection is restored via stable tag paths to survive tree refreshes.
 

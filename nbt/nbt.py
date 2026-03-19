@@ -196,10 +196,17 @@ class ByteArrayTag(Tag):
     
     @classmethod
     def deserialize(cls, data: bytes, offset: int = 0) -> tuple['ByteArrayTag', int]:
+        if offset + 4 > len(data):
+            raise ValueError("Truncated ByteArrayTag length")
         length = struct.unpack_from('>i', data, offset)[0]
         offset += 4
-        value = list(data[offset:offset + length])
-        return cls(value), offset + length
+        if length < 0:
+            raise ValueError("Negative ByteArrayTag length")
+        end = offset + length
+        if end > len(data):
+            raise ValueError("Truncated ByteArrayTag payload")
+        value = list(data[offset:end])
+        return cls(value), end
 
 
 class StringTag(Tag):
@@ -216,10 +223,15 @@ class StringTag(Tag):
     
     @classmethod
     def deserialize(cls, data: bytes, offset: int = 0) -> tuple['StringTag', int]:
+        if offset + 2 > len(data):
+            raise ValueError("Truncated StringTag length")
         length = struct.unpack_from('>H', data, offset)[0]
         offset += 2
-        value = data[offset:offset + length].decode('utf-8')
-        return cls(value), offset + length
+        end = offset + length
+        if end > len(data):
+            raise ValueError("Truncated StringTag payload")
+        value = data[offset:end].decode('utf-8')
+        return cls(value), end
 
 
 class ListTag(Tag):
@@ -255,11 +267,15 @@ class ListTag(Tag):
         return TagType.LIST
     
     def serialize(self) -> bytes:
-        if not self.value:
-            return struct.pack('>B', TagType.END) + struct.pack('>i', 0)
-        
-        tag_type_id = self.value[0].tag_type()
-        result = struct.pack('>B', tag_type_id)
+        element_tag_type_id: TagType
+        if self.list_tag_type is not None:
+            element_tag_type_id = self.list_tag_type
+        elif self.value:
+            element_tag_type_id = self.value[0].tag_type()
+        else:
+            element_tag_type_id = TagType.END
+
+        result = struct.pack('>B', element_tag_type_id)
         result += struct.pack('>i', len(self.value))
         for tag in self.value:
             result += tag.serialize()
@@ -267,21 +283,38 @@ class ListTag(Tag):
     
     @classmethod
     def deserialize(cls, data: bytes, offset: int = 0) -> tuple['ListTag', int]:
+        if offset + 1 > len(data):
+            raise ValueError("Truncated ListTag element type id")
         tag_type_id = struct.unpack_from('>B', data, offset)[0]
         offset += 1
+        if offset + 4 > len(data):
+            raise ValueError("Truncated ListTag length")
         length = struct.unpack_from('>i', data, offset)[0]
         offset += 4
-        
-        if tag_type_id == TagType.END or length == 0:
-            return cls([], TagType.END), offset
-        
+        if length < 0:
+            raise ValueError("Negative ListTag length")
+
+        if tag_type_id not in TAG_CLASSES:
+            raise ValueError(f"Invalid ListTag element type id: {tag_type_id}")
+        element_tag_type = TagType(tag_type_id)
+
+        if length == 0:
+            # Preserve the element type id even for empty lists (NBT spec).
+            return cls([], element_tag_type), offset
+        if element_tag_type == TagType.END:
+            raise ValueError("ListTag cannot be non-empty with element type END")
+
         tag_class = TAG_CLASSES[tag_type_id]
+        if tag_class is None:
+            raise ValueError("Invalid ListTag element type (no handler)")
         tags = []
         for _ in range(length):
+            if offset >= len(data):
+                raise ValueError("Truncated ListTag payload")
             tag, offset = tag_class.deserialize(data, offset)
             tags.append(tag)
-        
-        return cls(tags, TagType(tag_type_id)), offset
+
+        return cls(tags, element_tag_type), offset
 
 
 class CompoundTag(Tag):
@@ -340,18 +373,29 @@ class CompoundTag(Tag):
     def deserialize(cls, data: bytes, offset: int = 0) -> tuple['CompoundTag', int]:
         value = {}
         while True:
+            if offset >= len(data):
+                raise ValueError("Truncated CompoundTag payload")
             tag_type_id = struct.unpack_from('>B', data, offset)[0]
             offset += 1
             
             if tag_type_id == TagType.END:
                 break
-            
+
+            if offset + 2 > len(data):
+                raise ValueError("Truncated CompoundTag name length")
             name_length = struct.unpack_from('>H', data, offset)[0]
             offset += 2
-            name = data[offset:offset + name_length].decode('utf-8')
-            offset += name_length
-            
+            end = offset + name_length
+            if end > len(data):
+                raise ValueError("Truncated CompoundTag name payload")
+            name = data[offset:end].decode('utf-8')
+            offset = end
+
+            if tag_type_id not in TAG_CLASSES:
+                raise ValueError(f"Invalid CompoundTag child type id: {tag_type_id}")
             tag_class = TAG_CLASSES[tag_type_id]
+            if tag_class is None:
+                raise ValueError(f"Invalid CompoundTag child type id: {tag_type_id}")
             tag, offset = tag_class.deserialize(data, offset)
             value[name] = tag
         
@@ -390,10 +434,20 @@ class IntArrayTag(Tag):
     
     @classmethod
     def deserialize(cls, data: bytes, offset: int = 0) -> tuple['IntArrayTag', int]:
+        if offset + 4 > len(data):
+            raise ValueError("Truncated IntArrayTag length")
         length = struct.unpack_from('>i', data, offset)[0]
         offset += 4
+        if length < 0:
+            raise ValueError("Negative IntArrayTag length")
+        if length == 0:
+            return cls([]), offset
+        bytes_needed = length * 4
+        end = offset + bytes_needed
+        if end > len(data):
+            raise ValueError("Truncated IntArrayTag payload")
         value = list(struct.unpack_from(f'>{length}i', data, offset))
-        return cls(value), offset + (length * 4)
+        return cls(value), end
 
 
 class LongArrayTag(Tag):
@@ -428,10 +482,20 @@ class LongArrayTag(Tag):
     
     @classmethod
     def deserialize(cls, data: bytes, offset: int = 0) -> tuple['LongArrayTag', int]:
+        if offset + 4 > len(data):
+            raise ValueError("Truncated LongArrayTag length")
         length = struct.unpack_from('>i', data, offset)[0]
         offset += 4
+        if length < 0:
+            raise ValueError("Negative LongArrayTag length")
+        if length == 0:
+            return cls([]), offset
+        bytes_needed = length * 8
+        end = offset + bytes_needed
+        if end > len(data):
+            raise ValueError("Truncated LongArrayTag payload")
         value = list(struct.unpack_from(f'>{length}q', data, offset))
-        return cls(value), offset + (length * 8)
+        return cls(value), end
 
 
 TAG_CLASSES = {
@@ -486,7 +550,7 @@ class NBTFile:
             
             return cls(root, name)
         except Exception as e:
-            raise Exception(f"Failed to load NBT file: {str(e)}")
+            raise Exception(f"Failed to load NBT file: {str(e)}") from e
     
     def save(self, filepath: str, gzipped: bool = True):
         try:
@@ -502,5 +566,5 @@ class NBTFile:
                 with open(filepath, 'wb') as f:
                     f.write(data)
         except Exception as e:
-            raise Exception(f"Failed to save NBT file: {str(e)}")
+            raise Exception(f"Failed to save NBT file: {str(e)}") from e
 

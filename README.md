@@ -14,17 +14,18 @@ A simple, cross-platform GUI application for viewing and editing Minecraft NBT (
 
 ## Requirements
 
-- Python 3.9 or higher
-- PyQt5
+- Python 3.13 or higher
+- `uv` (recommended; installs dependencies from `pyproject.toml`)
+- PyQt5 (installed automatically via `uv`)
 
 ## Installation
 
 1. Clone or download this repository
 
-2. Install dependencies:
+2. Install dependencies with `uv`:
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 ## Usage
@@ -32,7 +33,7 @@ pip install -r requirements.txt
 ### Running the Application
 
 ```bash
-python main.py
+uv run python main.py
 ```
 
 ### Opening Files
@@ -67,12 +68,13 @@ python main.py
 
 ## File Structure
 
-```
+```text
 NBTEditor/
 ├── main.py              # Main application and GUI
 ├── nbt.py               # Custom NBT library implementation
 ├── nbt_handler.py       # NBT file operations and validation
-├── requirements.txt     # Python dependencies
+├── pyproject.toml       # Python/uv dependency configuration
+├── uv.lock              # Pinned dependency versions for uv
 └── README.md           # This file
 ```
 

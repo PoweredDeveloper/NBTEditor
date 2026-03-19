@@ -5,11 +5,11 @@ Main application window for the NBT Editor.
 import os
 import webbrowser
 from PyQt5.QtWidgets import (
-    QMainWindow, QWidget, QHBoxLayout, QPushButton,
-    QToolBar, QStatusBar, QFileDialog, QMessageBox, QAction, QStyle
+    QMainWindow, QWidget, QHBoxLayout,
+    QToolBar, QStatusBar, QFileDialog, QMessageBox, QAction
 )
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QIcon, QKeySequence
+from PyQt5.QtGui import QKeySequence
 from nbt.nbt import NBTFile, CompoundTag
 from ui.tree_widget import NBTTreeWidget
 from ui.property_editor import PropertyEditor
@@ -90,7 +90,7 @@ class NBTEditorMainWindow(QMainWindow):
         about_menu = menubar.addMenu("About")
 
         github_action = about_menu.addAction("Github")
-        github_action = about_menu.triggered.connect(lambda: webbrowser.open(GITHUB_URL))
+        github_action.triggered.connect(lambda: webbrowser.open(GITHUB_URL))
     
     def create_toolbar(self):
         """Create the toolbar"""
@@ -128,19 +128,19 @@ class NBTEditorMainWindow(QMainWindow):
         toolbar.addSeparator()
         
         # Tag actions
-        self.add_tag_action = QAction(style.standardIcon(QStyle.SP_FileDialogNewFolder), "Add Tag", self)
+        self.add_tag_action = QAction(get_icon_for_toolbar("AddTag", self.toolbar_icon_sheet_path), "Add Tag", self)
         self.add_tag_action.setToolTip("Add a new tag to the selected tag")
         self.add_tag_action.triggered.connect(self._add_tag_to_selected)
         self.add_tag_action.setEnabled(False)
         toolbar.addAction(self.add_tag_action)
         
-        self.delete_tag_action = QAction(style.standardIcon(QStyle.SP_TrashIcon), "Delete Tag", self)
+        self.delete_tag_action = QAction(get_icon_for_toolbar("DeleteTag", self.toolbar_icon_sheet_path), "Delete Tag", self)
         self.delete_tag_action.setToolTip("Delete the selected tag")
         self.delete_tag_action.triggered.connect(self._delete_selected_tag)
         self.delete_tag_action.setEnabled(False)
         toolbar.addAction(self.delete_tag_action)
         
-        self.rename_tag_action = QAction(style.standardIcon(QStyle.SP_FileDialogDetailedView), "Rename Tag", self)
+        self.rename_tag_action = QAction(get_icon_for_toolbar("RenameTag", self.toolbar_icon_sheet_path), "Rename Tag", self)
         self.rename_tag_action.setToolTip("Rename the selected tag")
         self.rename_tag_action.triggered.connect(self._rename_selected_tag)
         self.rename_tag_action.setEnabled(False)

@@ -14,21 +14,21 @@ class NBTValidationError(Exception):
 
 def load_nbt_file(filepath: str) -> NBTFile:
     try:
+        return NBTFile.load(filepath, gzipped=True)
+    except Exception:
+        # Many Minecraft NBT files are gzip-compressed, but some aren't.
+        # Try the uncompressed variant if gzip fails.
         try:
-            nbt_file = NBTFile.load(filepath, gzipped=True)
-            return nbt_file
-        except:
-            nbt_file = NBTFile.load(filepath, gzipped=False)
-            return nbt_file
-    except Exception as e:
-        raise Exception(f"Failed to load NBT file: {str(e)}")
+            return NBTFile.load(filepath, gzipped=False)
+        except Exception as e:
+            raise Exception(f"Failed to load NBT file: {str(e)}") from e
 
 
 def save_nbt_file(nbt_file: NBTFile, filepath: str, compressed: bool = True) -> None:
     try:
         nbt_file.save(filepath, gzipped=compressed)
     except Exception as e:
-        raise Exception(f"Failed to save NBT file: {str(e)}")
+        raise Exception(f"Failed to save NBT file: {str(e)}") from e
 
 
 def validate_nbt_format(nbt_file: NBTFile) -> Tuple[bool, List[str]]:

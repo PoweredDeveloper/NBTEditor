@@ -216,16 +216,35 @@ class TagActionController:
         on_success: Optional[Callable] = None
     ) -> Tuple[bool, Optional[str], Optional[Tag]]:
         """Add an element to a long array"""
-        value, ok = QInputDialog.getInt(
+        # QInputDialog.getInt() is int32-only; LongArrayTag requires int64.
+        text, ok = QInputDialog.getText(
             self.parent_widget,
             "Add Long",
             "Enter long value:",
-            0,
-            -9223372036854775808,
-            9223372036854775807,
-            1
+            echo=QLineEdit.Normal
         )
         if ok:
+            text = text.strip()
+            try:
+                value = int(text) if text else 0
+            except ValueError:
+                QMessageBox.warning(
+                    self.parent_widget,
+                    "Invalid Value",
+                    f"Could not parse long value: '{text}'"
+                )
+                return False, None, None
+
+            INT64_MIN = -(2**63)
+            INT64_MAX = 2**63 - 1
+            if value < INT64_MIN or value > INT64_MAX:
+                QMessageBox.warning(
+                    self.parent_widget,
+                    "Invalid Value",
+                    f"Value must be in range [{INT64_MIN}, {INT64_MAX}]"
+                )
+                return False, None, None
+
             array_tag.value.append(value)
             if on_success:
                 on_success()

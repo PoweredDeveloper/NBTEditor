@@ -1,4 +1,28 @@
+import os
 from PyQt5.QtGui import QIcon, QPixmap
+from PyQt5.QtWidgets import QMessageBox
+
+
+_missing_icon_sheet_warned = False
+
+
+def _warn_once_missing_icon_sheet(icon_sheet_path: str) -> None:
+    global _missing_icon_sheet_warned
+    if _missing_icon_sheet_warned:
+        return
+    _missing_icon_sheet_warned = True
+
+    if not os.path.exists(icon_sheet_path):
+        detail = f"Icon sheet not found: {icon_sheet_path}"
+    else:
+        detail = f"Failed to load icon sheet: {icon_sheet_path}"
+
+    QMessageBox.warning(
+        None,
+        "Missing Icons",
+        "The icon sprite sheet could not be loaded; toolbar/tree icons may be missing.\n\n"
+        + detail,
+    )
 
 def get_icon_for_tag(tag, type_icon_sheet_path: str) -> QIcon:
     # Icon positions in the 4x4 grid (row, col) where each icon is 128x128
@@ -26,6 +50,7 @@ def get_icon_for_tag(tag, type_icon_sheet_path: str) -> QIcon:
     
     pixmap = QPixmap(type_icon_sheet_path)
     if pixmap.isNull():
+        _warn_once_missing_icon_sheet(type_icon_sheet_path)
         return QIcon()
     
     # Extract the 128x128 icon from the sprite sheet
@@ -42,7 +67,10 @@ def get_icon_for_toolbar(toolbar_icon_name: str, toolbar_icon_sheet_path: str) -
         'NewFile': (0, 0),     
         'OpenFile': (0, 1),    
         'SaveFile': (0, 2),    
-        'SaveFileAs': (0, 3),  
+        'SaveFileAs': (0, 3),
+        'AddTag': (1, 0),
+        'DeleteTag': (1, 1),
+        'RenameTag': (1, 2),
     }
     
     if toolbar_icon_name not in icon_map:
@@ -52,6 +80,7 @@ def get_icon_for_toolbar(toolbar_icon_name: str, toolbar_icon_sheet_path: str) -
     
     pixmap = QPixmap(toolbar_icon_sheet_path)
     if pixmap.isNull():
+        _warn_once_missing_icon_sheet(toolbar_icon_sheet_path)
         return QIcon()
     
     # Extract the 128x128 icon from the sprite sheet

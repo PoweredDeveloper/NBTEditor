@@ -99,7 +99,7 @@ class PropertyEditor(QWidget):
     
     def set_tag(
         self,
-        name: str,
+        name: Optional[str],
         tag: Optional[Tag],
         parent_tag: Optional[Tag] = None,
         parent_key: Any = None
@@ -113,8 +113,8 @@ class PropertyEditor(QWidget):
         if tag is None:
             self._clear_editor()
             return
-        
-        self._populate_editor(tag, name, parent_tag)
+
+        self._populate_editor(tag, name if name is not None else "", parent_tag)
     
     def _clear_editor(self):
         """Clear the editor when no tag is selected"""

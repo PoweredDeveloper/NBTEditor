@@ -9,6 +9,34 @@ from nbt.nbt import (
 )
 
 
+INT32_MIN = -(2**31)
+INT32_MAX = 2**31 - 1
+INT64_MIN = -(2**63)
+INT64_MAX = 2**63 - 1
+
+
+def _to_signed(value: int, bits: int) -> int:
+    """
+    Convert an integer to two's-complement signed value with the given bit width.
+    Example: 200 with bits=8 -> -56.
+    """
+    mask = (1 << bits) - 1
+    value &= mask
+    sign_bit = 1 << (bits - 1)
+    if value & sign_bit:
+        return value - (1 << bits)
+    return value
+
+
+def _parse_int_in_range(value_string: str, min_value: int, max_value: int) -> int:
+    if not value_string:
+        return 0
+    val = int(value_string)
+    if val < min_value or val > max_value:
+        raise ValueError(f"Value must be in range [{min_value}, {max_value}]")
+    return val
+
+
 def parse_array_string(value_string: str, array_type: type) -> List[int]:
     """
     Parse comma-separated string into array values.
@@ -46,17 +74,19 @@ def update_tag_value(tag: Tag, value_string: str) -> None:
     value_string = value_string.strip()
     
     if isinstance(tag, IntTag):
-        tag.value = int(value_string) if value_string else 0
+        tag.value = _parse_int_in_range(value_string, INT32_MIN, INT32_MAX)
     elif isinstance(tag, FloatTag):
         tag.value = float(value_string) if value_string else 0.0
     elif isinstance(tag, StringTag):
         tag.value = value_string
     elif isinstance(tag, ByteTag):
-        tag.value = (int(value_string) if value_string else 0) & 0xFF
+        # ByteTag is stored as signed 8-bit. Convert from user integer using two's complement.
+        tag.value = _to_signed(int(value_string) if value_string else 0, 8)
     elif isinstance(tag, ShortTag):
-        tag.value = (int(value_string) if value_string else 0) & 0xFFFF
+        # ShortTag is stored as signed 16-bit. Convert from user integer using two's complement.
+        tag.value = _to_signed(int(value_string) if value_string else 0, 16)
     elif isinstance(tag, LongTag):
-        tag.value = int(value_string) if value_string else 0
+        tag.value = _parse_int_in_range(value_string, INT64_MIN, INT64_MAX)
     elif isinstance(tag, DoubleTag):
         tag.value = float(value_string) if value_string else 0.0
     elif isinstance(tag, ByteArrayTag):
